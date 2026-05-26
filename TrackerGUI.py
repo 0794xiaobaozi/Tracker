@@ -14,6 +14,37 @@ import customtkinter as ctk
 from freeze.BuildFreezeConfigGUI import FreezeConfigBuilderApp
 
 
+def build_internal_command(internal_arg, extra_args):
+    if getattr(sys, "frozen", False):
+        return [sys.executable, internal_arg, *extra_args]
+    return [sys.executable, os.path.abspath(__file__), internal_arg, *extra_args]
+
+
+def run_internal_command():
+    if len(sys.argv) < 2:
+        return False
+    command = sys.argv[1]
+    if command == "--internal-select-intervals":
+        from crop.SelectVideoIntervals import main
+
+        sys.argv = ["SelectVideoIntervals.py", *sys.argv[2:]]
+        main()
+        return True
+    if command == "--internal-crop-videos":
+        from crop.CropVideosFromIntervals import main
+
+        sys.argv = ["CropVideosFromIntervals.py", *sys.argv[2:]]
+        main()
+        return True
+    if command == "--internal-run-freeze":
+        from freeze.RunFreezeAnalysisFromYAML import main
+
+        sys.argv = ["RunFreezeAnalysisFromYAML.py", *sys.argv[2:]]
+        main()
+        return True
+    return False
+
+
 class CropWorkflowPanel:
     def __init__(self, parent):
         self.parent = parent
@@ -75,14 +106,15 @@ class CropWorkflowPanel:
     def _select_intervals(self):
         try:
             video_dir = self._video_dir()
-            cmd = [sys.executable, "crop/SelectVideoIntervals.py", "-d", video_dir, "--gui", "modern"]
+            args = ["-d", video_dir, "--gui", "modern"]
             if self.crop_mode.get() == "auto":
                 duration = float(self.duration_entry.get().strip())
                 if duration <= 0:
                     raise ValueError("Auto duration must be greater than 0.")
                 if self.duration_unit.get() == "minutes":
                     duration *= 60
-                cmd.extend(["--auto-duration-seconds", f"{duration:g}"])
+                args.extend(["--auto-duration-seconds", f"{duration:g}"])
+            cmd = build_internal_command("--internal-select-intervals", args)
             self._log("[INFO] Opening interval selector...")
             threading.Thread(target=self._run_command, args=(cmd,), daemon=True).start()
         except Exception as e:
@@ -92,7 +124,7 @@ class CropWorkflowPanel:
     def _crop_videos(self):
         try:
             video_dir = self._video_dir()
-            cmd = [sys.executable, "crop/CropVideosFromIntervals.py", "--directory", video_dir]
+            cmd = build_internal_command("--internal-crop-videos", ["--directory", video_dir])
             self._log("[INFO] Cropping videos...")
             threading.Thread(target=self._run_command, args=(cmd,), daemon=True).start()
         except Exception as e:
@@ -159,4 +191,5 @@ class TrackerGUI:
 
 
 if __name__ == "__main__":
-    TrackerGUI().run()
+    if not run_internal_command():
+        TrackerGUI().run()

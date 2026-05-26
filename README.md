@@ -29,6 +29,28 @@ pixi run -e location-tracker python TrackerGUI.py
 
 The left navigation switches between **Crop** and **Freeze Analysis**. The right panel shows the selected workflow.
 
+Build a Windows release folder for the combined GUI:
+
+```powershell
+pixi install -e location-tracker
+powershell -ExecutionPolicy Bypass -File packaging/build_release.ps1
+```
+
+Output:
+
+- `dist/TrackerGUI/TrackerGUI.exe`
+
+Package the whole `dist/TrackerGUI` folder when sharing the app. This project uses the folder-style build because OpenCV, matplotlib, and GUI dependencies are more reliable that way than as a single-file executable.
+
+Build a GitHub Release:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The Windows release workflow builds the combined GUI, creates `TrackerGUI-Windows.zip`, and attaches it to the GitHub Release. You can also run **Release Windows GUI** manually from the repository's GitHub Actions page to test the build before tagging.
+
 Command examples below use paths **relative to the repository root**. The folder name `my_project` is a placeholder—use your own dataset directory name in both `video/...` and `video/cropped_video/...`.
 
 ---

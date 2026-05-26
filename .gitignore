@@ -19,3 +19,6 @@ analysis/
 *.csv
 __pycache__/
 *.pyc
+build/
+dist/
+*.spec.bak

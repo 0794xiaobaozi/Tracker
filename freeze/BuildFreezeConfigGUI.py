@@ -969,8 +969,11 @@ class FreezeConfigBuilderApp:
             self._log(f"[ERROR] Batch analysis failed: {e}")
 
     def _batch_analysis_worker(self, config_path):
-        script_path = os.path.join(os.path.dirname(__file__), "RunFreezeAnalysisFromYAML.py")
-        cmd = [sys.executable, script_path, "--config", config_path]
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--internal-run-freeze", "--config", config_path]
+        else:
+            script_path = os.path.join(os.path.dirname(__file__), "RunFreezeAnalysisFromYAML.py")
+            cmd = [sys.executable, script_path, "--config", config_path]
         proc = subprocess.run(
             cmd,
             cwd=os.path.dirname(os.path.dirname(__file__)),

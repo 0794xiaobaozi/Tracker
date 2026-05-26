@@ -32,22 +32,35 @@ import pandas as pd
 import PIL.Image
 import time
 import warnings
-from scipy import ndimage
 from tqdm import tqdm
-import holoviews as hv
-from holoviews import opts
-from holoviews import streams
-from holoviews.streams import Stream, param
 from io import BytesIO
-from IPython.display import clear_output, Image, display
-try:
-    hv.notebook_extension('bokeh')
-except:
-    try:
-        hv.extension('bokeh')
-    except:
-        pass
 warnings.filterwarnings("ignore")
+
+
+def _require_holoviews():
+    import holoviews as hv
+    from holoviews import streams
+
+    try:
+        hv.notebook_extension("bokeh")
+    except Exception:
+        try:
+            hv.extension("bokeh")
+        except Exception:
+            pass
+    return hv, streams
+
+
+def _display_notebook_image(buffer):
+    from IPython.display import Image, display
+
+    display(Image(data=buffer.getvalue()))
+
+
+def _clear_notebook_output(wait=True):
+    from IPython.display import clear_output
+
+    clear_output(wait=wait)
 
 
 
@@ -173,6 +186,8 @@ def LoadAndCrop(video_dict,cropmethod=None,fstfile=False,accept_p_frames=False):
                     ),
                     cv2.INTER_NEAREST)
     cap.release()
+
+    hv, streams = _require_holoviews()
 
     #Make first image reference frame on which cropping can be performed
     image = hv.Image((np.arange(frame.shape[1]), np.arange(frame.shape[0]), frame))
@@ -550,9 +565,9 @@ def display_image(frame,fps,resize):
     img = img.resize(size=resize) if resize else img
     buffer = BytesIO()
     img.save(buffer,format="JPEG")    
-    display(Image(data=buffer.getvalue()))
+    _display_notebook_image(buffer)
     time.sleep(1/fps)
-    clear_output(wait=True)
+    _clear_notebook_output(wait=True)
         
         
     
@@ -1215,6 +1230,8 @@ def Calibrate(video_dict,cal_pix,SIGMA,accept_p_frames=False):
     print ('99.99 percentile of pixel change differences: ' + str(percentile))
     print ('Grayscale change cut-off for pixel change: ' + str(mt_cutoff))
     
+    hv, _streams = _require_holoviews()
+
     hist_freqs, hist_edges = np.histogram(cal_dif,bins=np.arange(30),density=True)
     hist = hv.Histogram((hist_edges, hist_freqs))
     hist.opts(title="Motion Cutoff: "+str(np.around(mt_cutoff,1)),xlabel="Grayscale Change",ylabel=

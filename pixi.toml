@@ -10,6 +10,7 @@ location-tracker = { features = ["location-tracker"] }
 
 [tasks]
 select-intervals = "python crop/SelectVideoIntervals.py"
+build-gui = "python -m PyInstaller packaging/TrackerGUI.spec --noconfirm --clean"
 
 [dependencies]
 
@@ -30,3 +31,5 @@ pyyaml = "*"
 [feature.location-tracker.pypi-dependencies]
 ipykernel = "*"
 customtkinter = "*"
+pyinstaller = "*"
+pyinstaller-hooks-contrib = "*"
