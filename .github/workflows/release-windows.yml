@@ -23,6 +23,7 @@ jobs:
         with:
           pixi-version: v0.63.0
           cache: true
+          environments: location-tracker
 
       - name: Install location-tracker environment
         run: pixi install -e location-tracker
