@@ -58,6 +58,114 @@ class CropBox:
         }
 
 
+class CropSelectionDialog:
+    def __init__(self, parent, frame, title):
+        self.parent = parent
+        self.frame = frame
+        self.result = None
+        self.start = None
+        self.rect_id = None
+        self.done_var = tk.BooleanVar(value=False)
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        height, width = rgb.shape[:2]
+        max_width, max_height = 1040, 680
+        self.scale = min(max_width / max(width, 1), max_height / max(height, 1), 1.0)
+        if self.scale < 1:
+            display_size = (int(width * self.scale), int(height * self.scale))
+            rgb = cv2.resize(rgb, display_size, interpolation=cv2.INTER_AREA)
+        else:
+            display_size = (width, height)
+
+        self.window = ctk.CTkToplevel(parent)
+        self.window.title(title)
+        set_window_icon(self.window)
+        self.window.protocol("WM_DELETE_WINDOW", self._cancel)
+        self.window.grab_set()
+
+        self.image = ImageTk.PhotoImage(Image.fromarray(rgb))
+        self.canvas = tk.Canvas(
+            self.window,
+            width=display_size[0],
+            height=display_size[1],
+            highlightthickness=0,
+            cursor="crosshair",
+        )
+        self.canvas.pack(padx=12, pady=(12, 8))
+        self.canvas.create_image(0, 0, anchor="nw", image=self.image)
+        self.canvas.bind("<ButtonPress-1>", self._on_press)
+        self.canvas.bind("<B1-Motion>", self._on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._on_release)
+
+        button_row = ctk.CTkFrame(self.window, fg_color="transparent")
+        button_row.pack(fill="x", padx=12, pady=(0, 12))
+        self.coord_label = ctk.CTkLabel(button_row, text="Drag to select crop.")
+        self.coord_label.pack(side="left", padx=(0, 12))
+        ctk.CTkButton(button_row, text="Confirm", width=110, command=self._confirm).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(button_row, text="Cancel", width=110, command=self._cancel).pack(side="right")
+
+    def _canvas_point(self, event):
+        x = min(max(int(event.x), 0), int(self.canvas["width"]))
+        y = min(max(int(event.y), 0), int(self.canvas["height"]))
+        return x, y
+
+    def _on_press(self, event):
+        self.start = self._canvas_point(event)
+        if self.rect_id is not None:
+            self.canvas.delete(self.rect_id)
+        x, y = self.start
+        self.rect_id = self.canvas.create_rectangle(x, y, x, y, outline="#ffb000", width=2)
+
+    def _on_drag(self, event):
+        if self.start is None or self.rect_id is None:
+            return
+        x0, y0 = self.start
+        x1, y1 = self._canvas_point(event)
+        self.canvas.coords(self.rect_id, x0, y0, x1, y1)
+        self._update_label(x0, y0, x1, y1)
+
+    def _on_release(self, event):
+        if self.start is None:
+            return
+        x0, y0 = self.start
+        x1, y1 = self._canvas_point(event)
+        self._update_label(x0, y0, x1, y1)
+
+    def _update_label(self, x0, y0, x1, y1):
+        rx0, ry0, rx1, ry1 = self._display_to_original_rect(x0, y0, x1, y1)
+        self.coord_label.configure(text=f"x0={rx0}, x1={rx1}, y0={ry0}, y1={ry1}")
+
+    def _display_to_original_rect(self, x0, y0, x1, y1):
+        left, right = sorted((x0, x1))
+        top, bottom = sorted((y0, y1))
+        inv = 1 / self.scale
+        height, width = self.frame.shape[:2]
+        ox0 = min(max(int(round(left * inv)), 0), width - 1)
+        ox1 = min(max(int(round(right * inv)), 0), width)
+        oy0 = min(max(int(round(top * inv)), 0), height - 1)
+        oy1 = min(max(int(round(bottom * inv)), 0), height)
+        return ox0, oy0, ox1, oy1
+
+    def _confirm(self):
+        if self.rect_id is None:
+            self.result = None
+        else:
+            x0, y0, x1, y1 = [int(v) for v in self.canvas.coords(self.rect_id)]
+            rx0, ry0, rx1, ry1 = self._display_to_original_rect(x0, y0, x1, y1)
+            self.result = None if rx1 <= rx0 or ry1 <= ry0 else (rx0, ry0, rx1, ry1)
+        self.done_var.set(True)
+        self.window.destroy()
+
+    def _cancel(self):
+        self.result = None
+        self.done_var.set(True)
+        self.window.destroy()
+
+    def show(self):
+        self.parent.wait_variable(self.done_var)
+        return self.result
+
+
 class FreezePreviewPlayer:
     def __init__(self, app, params, motion, freezing):
         self.app = app
@@ -505,13 +613,16 @@ class FreezeConfigBuilderApp:
             cap.release()
             if not ret:
                 raise RuntimeError(f"Could not read first frame: {video_path}")
-            rect = cv2.selectROI("Select Freeze Crop, press Enter to confirm", frame, showCrosshair=True)
-            cv2.destroyWindow("Select Freeze Crop, press Enter to confirm")
-            x, y, w, h = [int(v) for v in rect]
-            if w <= 0 or h <= 0:
+            rect = CropSelectionDialog(
+                self.root,
+                frame,
+                f"Select Freeze Crop - {os.path.basename(video_path)}",
+            ).show()
+            if rect is None:
                 self._log("[INFO] Crop selection skipped.")
                 return
-            self.crop_cfg = {"enabled": True, "x0": x, "x1": x + w, "y0": y, "y1": y + h}
+            x0, y0, x1, y1 = rect
+            self.crop_cfg = {"enabled": True, "x0": x0, "x1": x1, "y0": y0, "y1": y1}
             self.crop_enabled_var.set(True)
             self._update_crop_label()
             self._log(f"[OK] Crop selected from {os.path.basename(video_path)}.")
