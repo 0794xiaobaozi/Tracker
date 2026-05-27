@@ -793,18 +793,61 @@ def SaveData(video_dict,Motion,Freezing,mt_cutoff,FreezeThresh,MinDuration):
 
     """
 
+    fps = float(video_dict.get('fps', 25.0) or 25.0)
+
     #Create Dataframe
     DataFrame = pd.DataFrame(
         {'File': [video_dict['file']]*len(Motion),
+         'FPS': np.ones(len(Motion))*fps,
          'MotionCutoff':np.ones(len(Motion))*mt_cutoff,
          'FreezeThresh':np.ones(len(Motion))*FreezeThresh,
-         'MinFreezeDuration':np.ones(len(Motion))*MinDuration,
+         'MinFreezeDurationSeconds':np.ones(len(Motion))*(MinDuration/fps),
+         'MinFreezeDurationFrames':np.ones(len(Motion))*MinDuration,
          'Frame': np.arange(len(Motion)),
+         'TimeSeconds': np.arange(len(Motion))/fps,
          'Motion': Motion,
-         'Freezing': Freezing
+         'FreezingPercent': Freezing,
+         'FreezingBinary': (Freezing > 0).astype(int)
         })   
 
-    DataFrame.to_csv(os.path.splitext(video_dict['fpath'])[0] + '_FreezingOutput.csv', index=False)
+    output_stem = os.path.splitext(video_dict['fpath'])[0]
+    DataFrame.to_csv(output_stem + '_FreezingOutput.csv', index=False)
+
+    freezing_binary = (Freezing > 0).astype(int)
+    events = []
+    event_start = None
+    for idx, value in enumerate(freezing_binary):
+        if value == 1 and event_start is None:
+            event_start = idx
+        elif value == 0 and event_start is not None:
+            events.append((event_start, idx))
+            event_start = None
+    if event_start is not None:
+        events.append((event_start, len(freezing_binary)))
+
+    event_df = pd.DataFrame([
+        {
+            'File': video_dict['file'],
+            'Event': event_idx + 1,
+            'StartSecond': start / fps,
+            'EndSecond': end / fps,
+            'DurationSeconds': (end - start) / fps,
+            'StartFrame': start,
+            'EndFrameExclusive': end,
+            'DurationFrames': end - start,
+        }
+        for event_idx, (start, end) in enumerate(events)
+    ], columns=[
+        'File',
+        'Event',
+        'StartSecond',
+        'EndSecond',
+        'DurationSeconds',
+        'StartFrame',
+        'EndFrameExclusive',
+        'DurationFrames',
+    ])
+    event_df.to_csv(output_stem + '_FreezeEvents.csv', index=False)
     
     
     
@@ -881,26 +924,36 @@ def Summarize(video_dict,Motion,Freezing,FreezeThresh,MinDuration,mt_cutoff,bin_
 
     """
     
+    fps = float(video_dict.get('fps', 25.0) or 25.0)
+
     #define bins
     avg_dict = {'all': (0, len(Motion))}
     bin_dict = bin_dict if bin_dict is not None else avg_dict
     #bin_dict = {k: tuple((np.array(v) * video_dict['fps']).tolist()) for k, v in bin_dict.items()}
     
     #get means
-    bins = (pd.Series(bin_dict).rename('range(f)')
+    bins = (pd.Series(bin_dict).rename('FrameRange')
             .reset_index().rename(columns=dict(index='bin')))
-    bins['Motion'] = bins['range(f)'].apply(
+    bins['BinStartFrame'] = bins['FrameRange'].apply(lambda rng: int(rng[0]))
+    bins['BinEndFrame'] = bins['FrameRange'].apply(lambda rng: int(rng[1]))
+    bins['BinStartSecond'] = bins['BinStartFrame'] / fps
+    bins['BinEndSecond'] = bins['BinEndFrame'] / fps
+    bins['Motion'] = bins['FrameRange'].apply(
         lambda rng: Motion[slice(rng[0],rng[1])].mean())
-    bins['Freezing'] = bins['range(f)'].apply(
+    bins['FreezingPercent'] = bins['FrameRange'].apply(
         lambda rng: Freezing[slice(rng[0],rng[1])].mean())
+    bins = bins.drop(columns=['FrameRange'])
     
     #Create data frame to store data in
     df = pd.DataFrame({
         'File': [video_dict['file']]*len(bins),
-        'FileLength': np.ones(len(bins))*len(Motion),
+        'FPS': np.ones(len(bins))*fps,
+        'FileLengthFrames': np.ones(len(bins))*len(Motion),
+        'FileLengthSeconds': np.ones(len(bins))*(len(Motion)/fps),
         'MotionCutoff':np.ones(len(bins))*mt_cutoff,
         'FreezeThresh':np.ones(len(bins))*FreezeThresh,
-        'MinFreezeDuration':np.ones(len(bins))*MinDuration
+        'MinFreezeDurationSeconds':np.ones(len(bins))*(MinDuration/fps),
+        'MinFreezeDurationFrames':np.ones(len(bins))*MinDuration
     })   
     df = pd.concat([df,bins],axis=1)
     return df

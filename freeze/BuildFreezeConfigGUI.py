@@ -492,6 +492,9 @@ class FreezeConfigBuilderApp:
         self.video_dir_entry = ctk.CTkEntry(video_row)
         self.video_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         ctk.CTkButton(video_row, text="Browse", width=110, command=self._browse_video_dir).pack(side="left")
+        ctk.CTkButton(video_row, text="Video Info", width=110, command=self._update_video_info_label).pack(side="left", padx=(8, 0))
+        self.video_info_label = ctk.CTkLabel(frame, text="Video info: not loaded", anchor="w")
+        self.video_info_label.pack(fill="x", padx=12, pady=(4, 0))
 
         cal_row = ctk.CTkFrame(frame, fg_color="transparent")
         cal_row.pack(fill="x", padx=12, pady=(8, 0))
@@ -599,12 +602,14 @@ class FreezeConfigBuilderApp:
         if path:
             self.video_dir_entry.delete(0, "end")
             self.video_dir_entry.insert(0, os.path.normpath(path))
+            self._update_video_info_label()
 
     def _browse_calibration_video(self):
         path = filedialog.askopenfilename(title="Select Empty-Chamber Calibration Video")
         if path:
             self.calibration_video_entry.delete(0, "end")
             self.calibration_video_entry.insert(0, os.path.normpath(path))
+            self._update_video_info_label()
 
     def _first_video_path(self):
         video_dir = os.path.normpath(self.video_dir_entry.get().strip())
@@ -616,6 +621,39 @@ class FreezeConfigBuilderApp:
             if os.path.isfile(path) and name.lower().endswith("." + file_type.lower()):
                 return path
         raise FileNotFoundError(f"No .{file_type} videos found in {video_dir}")
+
+    def _project_video_paths(self):
+        video_dir = os.path.normpath(self.video_dir_entry.get().strip())
+        file_type = self.file_type_entry.get().strip().lstrip(".") or "mp4"
+        calibration_video = os.path.abspath(os.path.normpath(self.calibration_video_entry.get().strip() or ""))
+        if not os.path.isdir(video_dir):
+            return []
+        suffix = "." + file_type.lower()
+        paths = []
+        for name in sorted(os.listdir(video_dir)):
+            path = os.path.join(video_dir, name)
+            if not os.path.isfile(path) or not name.lower().endswith(suffix):
+                continue
+            if calibration_video and os.path.abspath(path) == calibration_video:
+                continue
+            paths.append(path)
+        return paths
+
+    def _update_video_info_label(self):
+        try:
+            paths = self._project_video_paths()
+            if not paths:
+                self.video_info_label.configure(text="Video info: no behavior videos found")
+                return
+            parts = []
+            for path in paths[:4]:
+                fps, frame_count = self._video_fps_and_frames(path)
+                duration = frame_count / fps if fps else 0
+                parts.append(f"{os.path.basename(path)}: {fps:.3f} FPS, {duration:.1f}s")
+            extra = "" if len(paths) <= 4 else f"; +{len(paths) - 4} more"
+            self.video_info_label.configure(text=f"Video info: {len(paths)} behavior video(s); " + "; ".join(parts) + extra)
+        except Exception as e:
+            self.video_info_label.configure(text=f"Video info: {e}")
 
     def _select_crop(self):
         try:
@@ -760,6 +798,7 @@ class FreezeConfigBuilderApp:
             with open(out_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(yaml_obj, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
             self.current_config_path = out_path
+            self._update_video_info_label()
             self._log(f"[OK] Project initialized: {os.path.normpath(out_path)}")
             messagebox.showinfo("Project Initialized", f"Config created:\n{os.path.normpath(out_path)}")
         except Exception as e:
@@ -1066,6 +1105,7 @@ class FreezeConfigBuilderApp:
             for name, rng in bins.items():
                 self._add_bin_row(name, rng[0], rng[1])
 
+        self._update_video_info_label()
         self._log(f"[OK] YAML loaded: {os.path.normpath(path)}")
         self.current_config_path = os.path.normpath(path)
 

@@ -254,7 +254,14 @@ In the GUI, `Auto Calibrate From Empty Video` estimates and fills `calibration.m
 ### Freeze outputs
 
 - Per video: `*_FreezingOutput.csv`
+  - Important columns: `Frame`, `TimeSeconds`, `Motion`, `FreezingPercent`, `FreezingBinary`.
+  - `FreezingPercent` is `0` or `100` at the frame level to stay compatible with ezTrack's percent-freezing convention; `FreezingBinary` is the same decision as `0` or `1`.
+- Per video freeze events: `*_FreezeEvents.csv`
+  - One row per continuous freeze bout.
+  - Important columns: `StartSecond`, `EndSecond`, `DurationSeconds`.
 - Batch summary: `FreezeBatchSummary.csv`
+  - Important columns: `FPS`, `FileLengthSeconds`, `MinFreezeDurationSeconds`, `bin`, `BinStartSecond`, `BinEndSecond`, `Motion`, `FreezingPercent`.
+  - Frame columns such as `FileLengthFrames`, `MinFreezeDurationFrames`, `BinStartFrame`, and `BinEndFrame` are kept only as audit columns for exact video indexing.
 
 ---
 
